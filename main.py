@@ -17,6 +17,25 @@ LINE = (
 OUTPUT_PATH = "/output/entry.txt"
 
 
+def output_path() -> str:
+    """Entry destination: $MAKEFUN_OUTPUT_DIR/entry.txt, else /output."""
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if out_dir:
+        return os.path.join(out_dir, "entry.txt")
+    return OUTPUT_PATH
+
+
+def verify_written_bytes(written: bytes, intended: bytes) -> None:
+    """Byte-exact read-back verification: same length, same bytes,
+    same sha256 digest; fail loudly (non-zero exit) on any drift."""
+    if len(written) != len(intended):
+        raise SystemExit("read-back byte length mismatch")
+    if written != intended:
+        raise SystemExit("read-back mismatch: written bytes differ")
+    if hashlib.sha256(written).digest() != hashlib.sha256(intended).digest():
+        raise SystemExit("read-back digest mismatch")
+
+
 def main() -> None:
     text = LINE
     # Gate: /output/entry.txt must be UTF-8 text of 1-200 characters,
@@ -30,17 +49,15 @@ def main() -> None:
     if "\n" in text:
         raise SystemExit("entry must be a single line")
     text.encode("utf-8")  # fail loudly if not valid UTF-8
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8", newline="") as f:
+    path = output_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
-    # Read-back verification: the bytes on disk must hash to exactly the
-    # intended line's digest; fail loudly (non-zero exit) on any drift.
-    with open(OUTPUT_PATH, "rb") as f:
+    # Read-back verification: the bytes on disk must be exactly the
+    # intended line's bytes; fail loudly (non-zero exit) on any drift.
+    with open(path, "rb") as f:
         written = f.read()
-    if hashlib.sha256(written).digest() != hashlib.sha256(
-        text.encode("utf-8")
-    ).digest():
-        raise SystemExit("read-back mismatch: written bytes differ")
+    verify_written_bytes(written, text.encode("utf-8"))
 
 
 if __name__ == "__main__":
